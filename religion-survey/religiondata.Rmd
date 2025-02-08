@@ -1,0 +1,266 @@
+---
+title: "collegedata"
+author: "Nyla Upal"
+date: "2025-01-30"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)
+library(usmap)
+library(sf)
+
+ReligionData <- read.csv("religion-survey-results.csv")
+```
+
+
+```{r}
+data <- select(ReligionData, 1, 48, 46, 45)
+data <- rename(data, Religion=1, Region=2, Gender=3, AgeRange=4)
+data <- data %>% filter(Religion!="Response")
+data <- mutate(data, Age=(substr(data$AgeRange, 1, 2)))
+data <- mutate(data, Age=as.numeric(Age))
+```
+
+
+```{r}
+religion_frequencies <- table(data$Religion)
+religion_frequencies <- sort(religion_frequencies, decreasing = TRUE)
+
+rf <- as.data.frame(religion_frequencies)
+
+ggplot(rf, aes(x=Var1, y=Freq)) +
+  geom_bar(stat="identity") +
+  labs(x="Religion", y="Total People", title="Religions by Size") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+
+```{r}
+mean_ages <- data %>%
+  group_by(Religion) %>%
+  summarise(mean_value = mean(Age))
+
+mean_ages <- mean_ages %>% arrange(desc(mean_value))
+mean_ages$Religion <- factor(mean_ages$Religion, levels = mean_ages$Religion)
+
+ggplot(mean_ages, aes(x=Religion, y=mean_value)) +
+  geom_bar(stat = "identity") +
+  labs(y = "Mean Age", title = "Mean Age of Religions") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) 
+```
+```{r}
+gender_distrib <- data %>%
+  group_by(Religion) %>%
+  count(Gender) %>%
+  arrange(Religion) %>%
+  group_by(Religion)
+
+female_count <- gender_distrib %>% slice(1)
+female_count <- rename(female_count, "Female"="n")
+female_count = subset(female_count, select = -(Gender) )
+
+male_count <- gender_distrib %>% slice(2)
+male_count <- rename(male_count, "Male"="n")
+male_count = subset(male_count, select = -(Gender) )
+
+total_count <- female_count
+total_count <- left_join(total_count, male_count)
+total_count <- mutate(total_count, Total = Female + Male)
+total_count <- mutate(total_count, female_percent = Female/Total)
+total_count <- mutate(total_count, male_percent = Male/Total)
+
+df_long <- total_count %>%
+  pivot_longer(cols = c(female_percent, male_percent), 
+               names_to = "gender", 
+               values_to = "count")
+
+ggplot(df_long, aes(x = Religion, y = count, fill = gender)) +
+  geom_bar(stat = "identity", position = "dodge") + 
+  labs(y = "Percent", title = "Percent gender distribution of religions") +
+   theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+
+
+```{r}
+most_frequent_region <- data %>%
+  group_by(Religion) %>%
+  count(Region) %>%  
+  arrange(Religion, desc(n)) %>%  
+  group_by(Religion) %>%
+  slice(1)
+
+most_frequent_region
+```
+```{r}
+most_frequent_religion <- data %>%
+  group_by(Region) %>%
+  count(Religion) %>%  
+  arrange(Region, desc(n)) %>%  
+  group_by(Region) %>%
+  slice(1) %>%
+  filter(Region != "")
+
+most_frequent_religion$Region <- tolower(most_frequent_religion$Region)
+most_frequent_religion
+```
+
+```{r}
+us_map_data <- us_map("states") %>% st_as_sf()
+
+ne <- c("CT","ME","MA","NH","RI","VT")
+ma <- c("NJ", "NY", "PA")
+enc <- c("IN","IL", "MI", "OH", "WI")
+wnc <- c("IA", "KS", "MN", "MO", "NE", "ND", "SD")
+sa <- c("DE", "DC", "FL", "GA", "MD", "NC", "SC", "VA", "WV")
+esc <- c("AL", "KY", "MS", "TN")
+wsc <- c("AR", "LA", "OK", "TX")
+mt <- c("AZ", "CO", "ID", "NM", "MT", "UT", "NV", "WY")
+pc <- c("AK", "CA", "HI", "OR", "WA")
+
+us_map_data <- mutate(us_map_data, census_region=case_when(
+    abbr %in% ne ~ "new england",
+    abbr %in% ma ~ "middle atlantic",
+    abbr %in% enc ~ "east north central",
+    abbr %in% wnc ~ "west north central",
+    abbr %in% sa ~ "south atlantic",
+    abbr %in% esc ~ "east south central",
+    abbr %in% wsc ~ "west south central",
+    abbr %in% mt ~ "mountain",
+    abbr %in% pc ~ "pacific"))
+
+us_map_data <- left_join(us_map_data, most_frequent_religion, by = c("census_region" = "Region"))
+```
+
+```{r}
+ggplot(us_map_data) +
+  geom_sf(aes(fill = Religion)) + 
+  scale_fill_viridis_d(name = "Religion:") +
+  labs(title = "Most Frequent Religion by Census Region in the U.S.")
+```
+
+```{r}
+data2 <- select(ReligionData, 1, 5, 8, 10, 11, 12, 13, 15, 18, 20, 21, 22, 23, 
+                25, 28, 30, 31, 32, 33, 35, 38, 40, 41, 42, 43, 46, 48, 45)
+
+#S=OftenSelf, C=ComfortSelf, O=ComfortOthersHave, T=ComfortTheyDo
+data2 <- rename(data2, Religion=1, S.Pray=2, S.PrayFor=3, S.BringUp=4, S.Ask=5, S.Food=6, S.Clothes=7,
+                C.Pray=8, C.PrayFor=9, C.BringUp=10, C.Ask=11, C.Food=12, C.Clothes=13,
+                O.Pray=14, O.PrayFor=15, O.BringUp=16, O.Ask=17, O.Food=18, O.Clothes=19, 
+                T.Pray=20, T.PrayFor=21, T.BringUp=22, T.Ask=23, T.Food=24, T.Clothes=25,
+                Gender=26, Region=27, Age=28)
+
+data2 <- filter(data2, Religion!="Atheist" & Religion!="Response")
+
+data2 <- mutate(data2, across(c(C.Pray, C.PrayFor, C.BringUp, C.Ask, C.Food, C.Clothes), 
+           ~ case_when(
+             . == "Not at all comfortable" ~ 1,
+             . == "Not so comfortable" ~ 2,
+             . == "I don't do this" ~ 3,
+             . == "Somewhat comfortably" ~ 4,
+             . == "Extremely comfortable" ~ 5, 
+             . == "Very comfortable" ~ 6)))
+
+data2 <- mutate(data2, across(c(T.Pray, T.PrayFor, T.BringUp, T.Ask, T.Food, T.Clothes), 
+           ~ case_when(
+             . == "Not at all comfortable" ~ 1,
+             . == "Not so comfortable" ~ 2,
+             . == "Somewhat comfortably" ~ 4,
+             . == "Extremely comfortable" ~ 5, 
+             . == "Very comfortable" ~6)))
+
+data2 <- mutate(data2, across(c(S.Pray, S.PrayFor, S.BringUp, S.Ask, S.Food, S.Clothes), 
+           ~ case_when(
+             . == "Never" ~ 0,
+             . == "Once a year or less" ~ 1,
+             . == "Once a month or less" ~ 2,
+             . == "Not applicable to my religious beliefs" ~ 3, 
+             . == "A few times per month" ~ 4,
+             . == "A few times per week" ~5,
+             . == "Every day" ~6)))
+
+data2 <- mutate(data2, TotalSelfCom = C.Pray+C.PrayFor+C.BringUp+C.Ask+C.Food+C.Clothes)
+data2 <- mutate(data2, TotalTheyCom = T.Pray+T.PrayFor+T.BringUp+T.Ask+T.Food+T.Clothes)
+
+data2 <- mutate(data2, Contrad = abs(TotalSelfCom - TotalTheyCom))
+```
+
+
+```{r}
+contrad_avg <- data2 %>%
+  group_by(Religion) %>%
+  summarise(mean_value = mean(Contrad, na.rm=TRUE))
+
+relig_c <- as.data.frame(contrad_avg)
+print(relig_c, row.names = FALSE)
+```
+```{r}
+contrad_region <- data2 %>%
+  group_by(Region) %>%
+  summarise(mean_value = mean(Contrad, na.rm=TRUE))%>%
+  filter(Region != "")
+
+print(contrad_region, row.names = FALSE)
+```
+```{r}
+contrad_gender <- data2 %>%
+  group_by(Gender) %>%
+  summarise(mean_value = mean(Contrad, na.rm=TRUE))
+contrad_gender
+print(contrad_gender, row.names = FALSE)
+```
+```{r}
+contrad_age <- data2 %>%
+  group_by(Age) %>%
+  summarise(mean_value = mean(Contrad, na.rm=TRUE))
+print(contrad_age, row.names = FALSE)
+```
+
+
+```{r}
+data2 <- mutate(data2, TotalOften = S.Pray+S.PrayFor+S.BringUp+S.Ask+S.Food+S.Clothes)
+data2 <- mutate(data2, OftenCont = abs(TotalOften - TotalTheyCom))
+hyp_avg <- data2 %>%
+  group_by(Religion) %>%
+  summarise(mean_value = mean(OftenCont, na.rm=TRUE))
+hyp_avg
+```
+
+
+
+```{r}
+data3 <- select(data2, C.Pray,C.PrayFor,C.BringUp,C.Ask,C.Food,C.Clothes,
+                T.Pray,T.PrayFor,T.BringUp,T.Ask,T.Food,T.Clothes)
+
+data3 <- mutate(data3, PrayDif = abs(C.Pray-T.Pray))
+data3 <- mutate(data3, PrayForDif = abs(C.PrayFor-T.PrayFor))
+data3 <- mutate(data3, BringUpDif = abs(C.BringUp-T.BringUp))
+data3 <- mutate(data3, AskDif = abs(C.Ask-T.Ask))
+data3 <- mutate(data3, FoodDif = abs(C.Food-T.Food))
+data3 <- mutate(data3, ClothesDif = abs(C.Clothes-T.Clothes))
+
+Reasons <- data.frame(
+  Factors = c("Praying", "Praying for others", "Bringing up religion", 
+              "Others asking about religion", "Refusing food for religion",
+              "Wearing clothes for religion"),
+  AverageDifference = c(mean(data3$PrayDif, na.rm=TRUE), 
+                        mean(data3$PrayForDif, na.rm=TRUE),
+                        mean(data3$BringUpDif, na.rm=TRUE),
+                        mean(data3$AskDif, na.rm=TRUE), 
+                        mean(data3$FoodDif, na.rm=TRUE), 
+                        mean(data3$ClothesDif, na.rm=TRUE)))
+Reasons
+```
+
+
+
+
+
+
+
+
